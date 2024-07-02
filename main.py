@@ -5,19 +5,28 @@ logging.basicConfig(
         level=logging.DEBUG if DEBUG else logging.INFO)
 
 from twilio.twiml.messaging_response import MessagingResponse
+from twilio.rest import Client
 from telethon import TelegramClient, events
 from aiohttp import web
+from datetime import datetime, timezone
 import asyncio
 import hashlib
 import json
+import pytz
 
 import settings
+
+logging.getLogger('aiohttp').setLevel(logging.DEBUG if DEBUG else logging.WARNING)
+logging.getLogger('twilio').setLevel(logging.DEBUG if DEBUG else logging.WARNING)
 
 # TODO: use adjectives + animal? https://gist.github.com/xeoncross/5381806b18de1f395187
 md5 = lambda x: hashlib.md5(x.encode()).hexdigest()[:4]
 
 bot = TelegramClient('data/bot', settings.API_ID, settings.API_HASH).start(bot_token=settings.API_TOKEN)
+twilio_client = Client(settings.TWILIO_SID, settings.TWILIO_TOKEN)
 app = web.Application()
+
+TIMEZONE_CALGARY = pytz.timezone('America/Edmonton')
 
 try:
     data = json.load(open('data/data.json'))
@@ -36,15 +45,65 @@ async def start(event):
     await event.reply('This bot proxies Protospace questions to a support chat.')
 
 @bot.on(events.NewMessage)
-async def echo_all(event):
-    await event.reply(event.text)
+async def new_message(event):
+    reply_id = event.message.reply_to_msg_id
+
+    logging.info('=> Telegram - id: {}, reply_id: {}, sender: {} ({}), text: {}'.format(
+        event.message.id, reply_id, event.sender.first_name, event.sender_id, event.raw_text
+    ))
+
+    if not reply_id:
+        logging.info('    Not a reply, ignoring')
+        return
+
+    forward_key = str(reply_id) + str(event.chat_id)
+
+    if forward_key not in data['forwards']:
+        logging.info('    Not a Waldo forward reply, ignoring')
+        return
+
+    forward = data['forwards'][forward_key]
+
+    logging.info('    Valid reply to: {} ({}), original: {}'.format(
+        forward['alias'], forward['sms']['from'], forward['sms']['body']
+    ))
+
+    response = '{}: {}'.format(event.sender.first_name, event.raw_text)
+    twilio_resp = twilio_client.messages.create(
+        body=response,
+        to=forward['sms']['from'],
+        from_=forward['sms']['to'],
+    )
+
+    now = datetime.now(timezone.utc)
+
+    reply = {
+        'message_id': event.message.id,
+        'chat_id': event.chat_id,
+        'sender_id': event.sender_id,
+        'name': event.sender.first_name,
+        'text': event.raw_text,
+        'time_utc': now.isoformat(),
+        'time_yyc': now.astimezone(TIMEZONE_CALGARY).isoformat(),
+    }
+
+    forward['replies'].append(reply)
+    store_data()
+
+    if twilio_resp.error_message:
+        logging.error('    Error: {} ({})'.format(twilio_resp.error_message, twilio_resp.error_code))
+        await event.reply('Error: {} ({})'.format(twilio_resp.error_message, twilio_resp.error_code))
+    else:
+        logging.info('    Sent: "{}"'.format(response))
+        await event.reply('Sent!')
+
+
 
 async def index(request):
     return web.Response(text='Hello, world')
 
 async def sms(request):
     post = await request.post()
-    print(post)
 
     sms = {
         'smsmessagesid': post['SmsMessageSid'],
@@ -59,10 +118,22 @@ async def sms(request):
     alias = md5(sms['from'])
     message = '{}: {}'.format(alias, sms['body'])
 
+    logging.info('<= SMS - smssid: {}, from: {} ({}), text: {}'.format(
+        sms['smssid'], alias, sms['from'], sms['body'],
+    ))
+
     forward = await bot.send_message(settings.WALDO_CHAT_ID, message)
     forward_key = str(forward.id) + str(settings.WALDO_CHAT_ID)
 
-    data['forwards'][forward_key] = dict(sms=sms, alias=alias)
+    now = datetime.now(timezone.utc)
+
+    data['forwards'][forward_key] = dict(
+        sms=sms,
+        alias=alias,
+        replies=[],
+        time_utc=now.isoformat(),
+        time_yyc=now.astimezone(TIMEZONE_CALGARY).isoformat(),
+    )
     store_data()
 
     resp = MessagingResponse()
