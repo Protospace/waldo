@@ -105,3 +105,4 @@ ENV/
 *.session
 *.session-journal
 settings.py
+data.json
