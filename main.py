@@ -40,6 +40,23 @@ def store_data():
         json.dump(data, f, indent=4)
 
 
+@bot.on(events.ChatAction(chats=(settings.WALDO_CHAT_ID)))
+async def chataction_event(event):
+    if not (event.user_joined or event.user_added):
+        return
+
+    if not event.user:
+        logging.info('No user, aborting.')
+        return
+
+    await event.reply('''
+Welcome, {}! I am Waldo, a bridge bot between SMS texting and this chat. \
+Protospace members can text me at 8076977686 to have their questions answered \
+here by volunteers.
+
+I will post questions here as a message. Reply to the specific message here to \
+send the person a response.'''.format(event.user.first_name))
+
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
     await event.reply('This bot proxies Protospace questions to a support chat.')
@@ -67,6 +84,11 @@ async def new_message(event):
     logging.info('    Valid reply to: {} ({}), original: {}'.format(
         forward['alias'], forward['sms']['from'], forward['sms']['body']
     ))
+
+    if not event.raw_text:
+        logging.info('    No text, aborting.')
+        await event.reply('Error: No text found. Media not supported yet.')
+        return
 
     response = '{}: {}'.format(event.sender.first_name, event.raw_text)
     twilio_resp = twilio_client.messages.create(
@@ -116,7 +138,7 @@ async def sms(request):
     }
 
     alias = md5(sms['from'])
-    message = '{}: {}'.format(alias, sms['body'])
+    message = 'User {}: {}'.format(alias, sms['body'])
 
     logging.info('<= SMS - smssid: {}, from: {} ({}), text: {}'.format(
         sms['smssid'], alias, sms['from'], sms['body'],
