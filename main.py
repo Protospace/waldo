@@ -49,13 +49,15 @@ async def chataction_event(event):
         logging.info('No user, aborting.')
         return
 
+    return
+
     await event.reply('''
 Welcome, {}! I am Waldo, a bridge bot between SMS texting and this chat. \
 Protospace members can text me at 8076977686 to have their questions answered \
 here by volunteers.
 
 I will post questions here as a message. Reply to the specific message here to \
-send the person a response.'''.format(event.user.first_name))
+send the person a response. Please keep chatter here to a minimum.'''.format(event.user.first_name), silent=True)
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def start(event):
@@ -87,7 +89,7 @@ async def new_message(event):
 
     if not event.raw_text:
         logging.info('    No text, aborting.')
-        await event.reply('Error: No text found. Media not supported yet.')
+        await event.reply('Error: No text found. Media not supported yet.', silent=True)
         return
 
     response = '{}: {}'.format(event.sender.first_name, event.raw_text)
@@ -114,10 +116,10 @@ async def new_message(event):
 
     if twilio_resp.error_message:
         logging.error('    Error: {} ({})'.format(twilio_resp.error_message, twilio_resp.error_code))
-        await event.reply('Error: {} ({})'.format(twilio_resp.error_message, twilio_resp.error_code))
+        await event.reply('Error: {} ({})'.format(twilio_resp.error_message, twilio_resp.error_code), silent=True)
     else:
         logging.info('    Sent: "{}"'.format(response))
-        await event.reply('Sent!')
+        await event.reply('Sent!', silent=True)
 
 
 
