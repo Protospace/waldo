@@ -141,13 +141,15 @@ async def sms(request):
 
     alias = md5(sms['from'])
     message = 'User {}: {}'.format(alias, sms['body'])
+    is_test = sms['body'].lower().startswith('test')
 
     logging.info('<= SMS - smssid: {}, from: {} ({}), text: {}'.format(
         sms['smssid'], alias, sms['from'], sms['body'],
     ))
 
-    forward = await bot.send_message(settings.WALDO_CHAT_ID, message)
-    forward_key = str(forward.id) + str(settings.WALDO_CHAT_ID)
+    destination = settings.TANNER_ID if is_test else settings.WALDO_CHAT_ID
+    forward = await bot.send_message(destination, message)
+    forward_key = str(forward.id) + str(destination)
 
     now = datetime.now(timezone.utc)
 

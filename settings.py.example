@@ -3,6 +3,7 @@ API_HASH = ''
 API_TOKEN = ''
 
 WALDO_CHAT_ID = 0
+TANNER_ID = 0
 
 TWILIO_SID = ''
 TWILIO_TOKEN = ''
