@@ -117,10 +117,17 @@ async def new_message(event):
     if twilio_resp.error_message:
         logging.error('    Error: {} ({})'.format(twilio_resp.error_message, twilio_resp.error_code))
         await event.reply('Error: {} ({})'.format(twilio_resp.error_message, twilio_resp.error_code), silent=True)
-    else:
-        logging.info('    Sent: "{}"'.format(response))
-        await event.reply('Sent!', silent=True)
+        return
 
+    logging.info('    Sent: "{}"'.format(response))
+    #await event.reply('Sent!', silent=True)
+
+    if 'telegram' in forward:
+        telegram = forward['telegram']
+        text = telegram['message'] + '\n'
+        for reply in forward['replies']:
+            text += '\n> ' + reply['name'] + ': ' + reply['text']
+        await bot.edit_message(telegram['chat_id'], telegram['message_id'], text, link_preview=False)
 
 
 async def index(request):
@@ -148,10 +155,16 @@ async def sms(request):
     ))
 
     destination = settings.TANNER_ID if is_test else settings.WALDO_CHAT_ID
-    forward = await bot.send_message(destination, message)
+    forward = await bot.send_message(destination, message, link_preview=False)
     forward_key = str(forward.id) + str(destination)
 
     now = datetime.now(timezone.utc)
+
+    telegram = dict(
+        chat_id=destination,
+        message_id=forward.id,
+        message=message,
+    )
 
     data['forwards'][forward_key] = dict(
         sms=sms,
@@ -159,6 +172,7 @@ async def sms(request):
         replies=[],
         time_utc=now.isoformat(),
         time_yyc=now.astimezone(TIMEZONE_CALGARY).isoformat(),
+        telegram=telegram,
     )
     store_data()
 
