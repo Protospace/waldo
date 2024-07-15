@@ -131,7 +131,7 @@ async def new_message(event):
 
 
 async def index(request):
-    return web.Response(text='<i>KEEP LOOKING...</i>')
+    return web.Response(text='<i>KEEP LOOKING...</i>', content_type='text/html')
 
 async def sms(request):
     post = await request.post()
