@@ -9,6 +9,8 @@ from twilio.rest import Client
 from telethon import TelegramClient, events
 from aiohttp import web
 from datetime import datetime, timezone
+from uuid import uuid4
+import requests
 import asyncio
 import hashlib
 import json
@@ -150,12 +152,62 @@ async def sms(request):
     message = 'User {}: {}'.format(alias, sms['body'])
     is_test = sms['body'].lower().startswith('test')
 
-    logging.info('<= SMS - smssid: {}, from: {} ({}), text: {}'.format(
-        sms['smssid'], alias, sms['from'], sms['body'],
+    media = []
+    bad_media = False
+    num_media = int(post.get('NumMedia', 0))
+
+    for i in range(num_media):
+        media_type = post['MediaContentType' + str(i)]
+        if media_type == 'image/jpeg':
+            extention = '.jpg'
+        else:
+            logging.info('Found unsupported media type: %s', media_type)
+            bad_media = True
+            continue
+
+        media_url = post['MediaUrl' + str(i)]
+        filename = 'data/media/' + str(uuid4()) + extention
+
+        try:
+            res = requests.get(media_url, timeout=5)
+            res.raise_for_status()
+            with open(filename, 'wb') as f:
+                f.write(res.content)
+        except BaseException as e:
+            logging.error('Problem downloading Twilio media: {} - {}'.format(e.__class__.__name__, str(e)))
+            bad_media = True
+            continue
+
+        logging.info('Saved file %s, type: %s', filename, media_url)
+
+        m = dict(
+            media_type=media_type,
+            media_url=media_url,
+            filename=filename,
+        )
+        media.append(m)
+
+    if bad_media:
+        logging.info('Sending unsupported media type message...')
+        unsupported_resp = twilio_client.messages.create(
+            body='Waldo: Problem relaying media. Any text still went through, however.',
+            to=sms['from'],
+            from_=sms['to'],
+        )
+
+    logging.info('<= SMS - smssid: {}, from: {} ({}), num media: {}, text: {}'.format(
+        sms['smssid'], alias, sms['from'], num_media, sms['body'],
     ))
 
     destination = settings.TANNER_ID if is_test else settings.WALDO_CHAT_ID
-    forward = await bot.send_message(destination, message, link_preview=False)
+
+    files = [m['filename'] for m in media]
+    if len(files):
+        forward = await bot.send_message(destination, message, file=files, link_preview=False)
+        forward = forward[0]
+    else:
+        forward = await bot.send_message(destination, message, link_preview=False)
+
     forward_key = str(forward.id) + str(destination)
 
     now = datetime.now(timezone.utc)
@@ -170,6 +222,7 @@ async def sms(request):
         sms=sms,
         alias=alias,
         replies=[],
+        media=media,
         time_utc=now.isoformat(),
         time_yyc=now.astimezone(TIMEZONE_CALGARY).isoformat(),
         telegram=telegram,

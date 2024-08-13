@@ -106,3 +106,4 @@ ENV/
 *.session-journal
 settings.py
 data.json
+media/
