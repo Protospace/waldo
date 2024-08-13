@@ -150,6 +150,16 @@ async def sms(request):
     message = 'User {}: {}'.format(alias, sms['body'])
     is_test = sms['body'].lower().startswith('test')
 
+    num_media = int(post.get('NumMedia', 0))
+    if num_media:
+        logging.info('{} media detected, sending unsupported media message...'.format(num_media))
+        twilio_resp = twilio_client.messages.create(
+            body='Waldo: Sorry, media is unsupported for the time being. Your text was still relayed, however.',
+            to=sms['from'],
+            from_=sms['to'],
+        )
+        message += '\n\n[unsupported media ignored]'
+
     logging.info('<= SMS - smssid: {}, from: {} ({}), text: {}'.format(
         sms['smssid'], alias, sms['from'], sms['body'],
     ))
